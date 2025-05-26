@@ -50,24 +50,24 @@ jobs:
 
             # Create backend NGINX config
             sudo tee /etc/nginx/sites-available/backend-app.conf > /dev/null << 'EOF'
-            upstream backend_app {
-                server 127.0.0.1:5000;
-            }
+upstream backend_app {
+    server 127.0.0.1:5000;
+}
 
-            server {
-                listen 80;
-                server_name _;
+server {
+    listen 80;
+    server_name _;
 
-                location / {
-                    proxy_pass         http://backend_app;
-                    proxy_http_version 1.1;
-                    proxy_set_header   Upgrade $http_upgrade;
-                    proxy_set_header   Connection "upgrade";
-                    proxy_set_header   Host $host;
-                    proxy_cache_bypass $http_upgrade;
-                }
-            }
-            EOF
+    location / {
+        proxy_pass         http://backend_app;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+EOF
 
             # Enable NGINX config
             sudo ln -sfn /etc/nginx/sites-available/backend-app.conf /etc/nginx/sites-enabled/backend-app.conf
@@ -108,7 +108,7 @@ EOF
               -p 5000:5000 \
               backend-app:latest
 
-            # H) Clean up unused images
+            # H) Clean up
             sudo docker image prune -f
 
             echo "✅ Backend deployment complete."

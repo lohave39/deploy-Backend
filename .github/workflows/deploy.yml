@@ -1,0 +1,114 @@
+name: CI/CD for Node.js Backend App
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          port: 22
+
+          script: |
+            set -e
+
+            echo "✅ Updating system..."
+            sudo apt update -y
+
+            # A) Install Docker
+            if ! command -v docker &> /dev/null; then
+              echo "🐳 Installing Docker..."
+              sudo apt install -y docker.io
+              sudo systemctl start docker
+              sudo systemctl enable docker
+              sudo usermod -aG docker ubuntu
+            fi
+
+            # B) Install Nginx
+            if ! command -v nginx &> /dev/null; then
+              echo "🌐 Installing Nginx..."
+              sudo apt install -y nginx
+              sudo systemctl enable nginx
+              sudo systemctl start nginx
+            fi
+
+            echo "⚙️ Configuring Nginx reverse proxy..."
+
+            # Remove default site
+            sudo rm -f /etc/nginx/sites-enabled/default
+
+            # Create backend NGINX config
+            sudo tee /etc/nginx/sites-available/backend-app.conf > /dev/null << 'EOF'
+            upstream backend_app {
+                server 127.0.0.1:5000;
+            }
+
+            server {
+                listen 80;
+                server_name _;
+
+                location / {
+                    proxy_pass         http://backend_app;
+                    proxy_http_version 1.1;
+                    proxy_set_header   Upgrade $http_upgrade;
+                    proxy_set_header   Connection  "upgrade";
+                    proxy_set_header   Host        $host;
+                    proxy_cache_bypass $http_upgrade;
+                }
+            }
+            EOF
+
+            # Enable NGINX config
+            sudo ln -sfn /etc/nginx/sites-available/backend-app.conf /etc/nginx/sites-enabled/backend-app.conf
+
+            # Test and reload NGINX
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            # C) Pull latest code
+            echo "📥 Pulling backend code..."
+            rm -rf backend-app
+            mkdir backend-app
+            cd ~/backend-app
+            git clone https://github.com/lohave39/deploy-Backend.git .
+            git fetch origin main
+            git reset --hard origin/main
+
+            # D) Create .env file
+            echo "⚙️ Creating .env file..."
+            cat <<EOF > .env
+PORT=5000
+# Add other env variables here if needed
+EOF
+
+            # E) Docker build
+            echo "🐳 Building Docker image..."
+            sudo docker build -t backend-app:latest .
+
+            # F) Stop & remove previous container if exists
+            sudo docker stop backend-app || true
+            sudo docker rm backend-app || true
+
+            # G) Run Docker container
+            echo "🚀 Running backend container..."
+            sudo docker run -d \
+              --name backend-app \
+              --env-file .env \
+              -p 5000:5000 \
+              backend-app:latest
+
+            # H) Clean up
+            sudo docker image prune -f
+
+            echo "✅ Backend deployment complete."

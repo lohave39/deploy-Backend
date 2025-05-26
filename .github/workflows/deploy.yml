@@ -48,8 +48,7 @@ jobs:
             # Remove default site
             sudo rm -f /etc/nginx/sites-enabled/default
 
-            # Create backend NGINX config
-            sudo tee /etc/nginx/sites-available/backend-app.conf > /dev/null << 'EOF'
+cat << 'EOF' | sudo tee /etc/nginx/sites-available/backend-app.conf > /dev/null
 upstream backend_app {
     server 127.0.0.1:5000;
 }
@@ -69,10 +68,7 @@ server {
 }
 EOF
 
-            # Enable NGINX config
             sudo ln -sfn /etc/nginx/sites-available/backend-app.conf /etc/nginx/sites-enabled/backend-app.conf
-
-            # Test and reload NGINX
             sudo nginx -t
             sudo systemctl reload nginx
 
@@ -85,30 +81,24 @@ EOF
             git fetch origin main
             git reset --hard origin/main
 
-            # D) Create .env file
-            echo "⚙️ Creating .env file..."
-            cat <<EOF > .env
+cat << EOF > .env
 PORT=5000
-# Add other env variables here if needed
+# Add more environment variables here as needed
 EOF
 
-            # E) Build Docker image
             echo "🐳 Building Docker image..."
             sudo docker build -t backend-app:latest .
 
-            # F) Stop & remove previous container if exists
+            echo "🛑 Stopping existing container if running..."
             sudo docker stop backend-app || true
             sudo docker rm backend-app || true
 
-            # G) Run Docker container
-            echo "🚀 Running backend container..."
+            echo "🚀 Running backend Docker container..."
             sudo docker run -d \
               --name backend-app \
               --env-file .env \
               -p 5000:5000 \
               backend-app:latest
 
-            # H) Clean up
             sudo docker image prune -f
-
             echo "✅ Backend deployment complete."
